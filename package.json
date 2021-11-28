@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "migrate-rinkeby": "truffle migrate --network rinkeby --reset --compile-all -f 2 --to 2",
-    "verify-rinkeby": "truffle run verify Greeter --network rinkeby",
+    "verify-rinkeby": "truffle run verify TestToken TestTokenVendor --network rinkeby",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -21,9 +21,13 @@
     "dotenv": "^10.0.0",
     "ethers": "^5.5.1",
     "hardhat": "^2.6.8",
+    "pify": "^2.3.0",
     "truffle": "^5.4.21",
     "truffle-plugin-verify": "^0.5.18",
-    "ts-node": "^10.4.0",
-    "pify": "^2.3.0"
+    "ts-node": "^10.4.0"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "^0.2.2",
+    "@openzeppelin/contracts": "^4.4.0"
   }
 }
