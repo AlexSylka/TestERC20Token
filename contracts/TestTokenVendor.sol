@@ -9,45 +9,102 @@ interface Students {
   function getStudentsList() external view returns (string[] memory);
 }
 
+interface DaiToken {
+    function balanceOf(address account) external view returns (uint256);
+    function transferFrom(address sender, address recipient,uint256 amount) external returns (bool);
+}
+
 contract TestTokenVendor is Ownable {
+  TestToken public token;
+  DaiToken public daiToken;
+  Students public students;
+  AggregatorV3Interface public ethUsdPriceFeed;
+  AggregatorV3Interface public daiEthPriceFeed;
 
-  address constant STUDENTS_ADDRESS = 0x0E822C71e628b20a35F8bCAbe8c11F274246e64D;
-  TestToken token;
-  AggregatorV3Interface priceFeed;
+  event Transfer( address sender, address recipient, uint256 amount);
+  event TransferFailed( address sender, address recipient, uint256 amount, string reason);
+  event Bought(address payer, uint256 value);
+  event BoughtFailed(address payer, uint256 value, string reason);
+  event Success(address owner);
 
-  constructor(address tokenAddress) {
-    token = TestToken(tokenAddress);
-    priceFeed = AggregatorV3Interface(0x8A753747A1Fa494EC906cE90E9f37563A8AF630e);
+  constructor(address _testTokenAddress, 
+            address _ethUsdAggregator, 
+            address _studentsContract, 
+            address _daiEthAggregator,
+            address _daiAddress) {
+    token = TestToken(_testTokenAddress);
+    students = Students(_studentsContract);
+    ethUsdPriceFeed = AggregatorV3Interface(_ethUsdAggregator);
+    daiEthPriceFeed = AggregatorV3Interface(_daiEthAggregator);
+    daiToken = DaiToken(_daiAddress);
   }
 
-  function getLatestPrice() public view returns (uint256) {
-        (
-            uint80 roundID, 
-            int price,
-            uint startedAt,
-            uint timeStamp,
-            uint80 answeredInRound
-        ) = priceFeed.latestRoundData();
+  function getEthLatestPriceInUsd() public view returns (uint256) {
+        (,int price,,,) = ethUsdPriceFeed.latestRoundData();
         return uint256(price);
+  }
+
+  function getTestTokenPriceInEth() public view returns (uint256) {
+      return (getEthLatestPriceInUsd() / getStudentsLength()) / (10 ** ethUsdPriceFeed.decimals());
+  }
+
+    function getDaiTokenPriceInEth() public view returns (uint256) {
+      (,int price,,,) = daiEthPriceFeed.latestRoundData();
+      return uint256(price) / (18 ** daiEthPriceFeed.decimals());
+  }
+
+    function buyTokensWithDai() public payable{
+        uint256 daiAmountToBuy = msg.value;
+        require(daiAmountToBuy > 0, "Send DAI to buy some tokens");
+        require(daiToken.balanceOf(msg.sender) < daiAmountToBuy, "Not enought Dai tokens");
+
+        uint256 amountToBuy = (msg.value * getDaiTokenPriceInEth()) * getTestTokenPriceInEth();
+       
+        uint256 vendorBalance = token.balanceOf(address(this));
+        require(vendorBalance < amountToBuy, "Sorry, there is not enough tokens to buy");
+
+        try daiToken.transferFrom(msg.sender, address(this), daiAmountToBuy) {
+            emit Transfer(msg.sender, address(this), daiAmountToBuy);
+        } catch Error(string memory reason) {
+            emit TransferFailed(msg.sender, address(this), daiAmountToBuy, reason);
+            (bool success,) = msg.sender.call{ value: msg.value }(bytes(reason));
+            require(success, "External call failed"); 
+        } catch (bytes memory reason) {
+            (bool success,) = msg.sender.call{value: msg.value}(reason);
+            require(success, "External call failed");
+        }
+
+        try token.transfer(msg.sender, amountToBuy) {
+            emit Bought(msg.sender, msg.value);
+        } catch Error(string memory reason) {
+            emit BoughtFailed(msg.sender, msg.value, reason);
+            (bool success,) = msg.sender.call{ value: msg.value }(bytes(reason));
+            require(success, "External call failed"); 
+        } catch (bytes memory reason) {
+            (bool success,) = msg.sender.call{value: msg.value}(reason);
+            require(success, "External call failed");
+        }
     }
 
   function buyTokens() public payable {
     require(msg.value > 0, "Send ETH to buy some tokens");
 
-    uint256 amountToBuy = msg.value * (getLatestPrice() / getStudentsLength()) / (10 ** priceFeed.decimals());
+    uint256 amountToBuy = msg.value * getTestTokenPriceInEth();
 
-    uint256 vendorBalance = token.balanceOf(address(this));
-    if(vendorBalance < amountToBuy) {
-        msg.sender.call{value: msg.value}("Sorry, there is not enough tokens to buy");
-        return;
-    }
+    try token.transfer(msg.sender, amountToBuy) {
+      emit Bought(msg.sender, msg.value);
+    } catch Error(string memory reason) {
+        emit BoughtFailed(msg.sender, msg.value, reason);
+        (bool success,) = msg.sender.call{ value: msg.value }(bytes(reason));
+        require(success, "External call failed"); 
+    } catch (bytes memory reason) {
+        (bool success,) = msg.sender.call{value: msg.value}(reason);
+        require(success, "External call failed");
+    } 
 
-    (bool sent) = token.transfer(msg.sender, amountToBuy);
-    require(sent, "Failed to transfer token to user");
   }
 
-    function getStudentsLength() public view returns (uint256) {
-        Students students = Students(STUDENTS_ADDRESS);
-        return students.getStudentsList().length;
-    }
+  function getStudentsLength() public view returns (uint256) {
+      return students.getStudentsList().length;
+  }
 }
