@@ -53,35 +53,33 @@ contract TestTokenVendor is Ownable {
       return uint256(price) / (18 ** daiEthPriceFeed.decimals());
   }
 
-    function buyTokensWithDai() public payable{
-        uint256 daiAmountToBuy = msg.value;
-        require(daiAmountToBuy > 0, "Send DAI to buy some tokens");
-        require(daiToken.balanceOf(msg.sender) < daiAmountToBuy, "Not enought Dai tokens");
-
-        uint256 amountToBuy = (msg.value * getDaiTokenPriceInEth()) * getTestTokenPriceInEth();
+    function buyTokensWithDai(uint256 daiAmount) public {
+        require(daiAmount > 0, "Send DAI to buy some tokens");
+        //require(daiToken.balanceOf(msg.sender) < daiAmount, "Not enought Dai tokens.");
+        uint256 amountToBuy = (daiAmount * getDaiTokenPriceInEth()) * getTestTokenPriceInEth();
        
         uint256 vendorBalance = token.balanceOf(address(this));
         require(vendorBalance < amountToBuy, "Sorry, there is not enough tokens to buy");
 
-        try daiToken.transferFrom(msg.sender, address(this), daiAmountToBuy) {
-            emit Transfer(msg.sender, address(this), daiAmountToBuy);
+        try daiToken.transferFrom(msg.sender, address(this), daiAmount) {
+            emit Transfer(msg.sender, address(this), daiAmount);
         } catch Error(string memory reason) {
-            emit TransferFailed(msg.sender, address(this), daiAmountToBuy, reason);
-            (bool success,) = msg.sender.call{ value: msg.value }(bytes(reason));
+            emit TransferFailed(msg.sender, address(this), daiAmount, reason);
+            (bool success,) = msg.sender.call{ value: daiAmount }(bytes(reason));
             require(success, "External call failed"); 
         } catch (bytes memory reason) {
-            (bool success,) = msg.sender.call{value: msg.value}(reason);
+            (bool success,) = msg.sender.call{value: daiAmount}(reason);
             require(success, "External call failed");
         }
 
         try token.transfer(msg.sender, amountToBuy) {
-            emit Bought(msg.sender, msg.value);
+            emit Bought(msg.sender, daiAmount);
         } catch Error(string memory reason) {
-            emit BoughtFailed(msg.sender, msg.value, reason);
-            (bool success,) = msg.sender.call{ value: msg.value }(bytes(reason));
+            emit BoughtFailed(msg.sender, daiAmount, reason);
+            (bool success,) = msg.sender.call{ value: daiAmount }(bytes(reason));
             require(success, "External call failed"); 
         } catch (bytes memory reason) {
-            (bool success,) = msg.sender.call{value: msg.value}(reason);
+            (bool success,) = msg.sender.call{value: daiAmount}(reason);
             require(success, "External call failed");
         }
     }
